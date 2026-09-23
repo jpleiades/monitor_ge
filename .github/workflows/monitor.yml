@@ -1,45 +1,49 @@
 name: Monitor GlobalEduca
-
+ 
 on:
   schedule:
     - cron: '7,27,47 * * * *'   # cada 20 minutos, evitando las horas en punto (GitHub puede retrasarlo)
   workflow_dispatch:          # botón "Verificar ahora" y ejecución manual desde Actions
     inputs:
+      probar_login:
+        description: 'Solo probar el login con capturas (no comprueba el resto)'
+        type: boolean
+        default: false
       probar_correo:
         description: 'Solo enviar un correo de prueba (no comprueba la plataforma)'
         type: boolean
         default: false
-
+ 
 permissions:
   contents: write
-
+ 
 concurrency:
   group: monitor
   cancel-in-progress: false
-
+ 
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
+ 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
+ 
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
-
+ 
       - name: Caché del navegador
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-1.47.2
-
+ 
       - name: Instalar Chromium
         run: npx playwright install --with-deps chromium
-
+ 
       - name: Comprobar módulos
         env:
           GE_USER: ${{ vars.GE_USER }}
@@ -51,8 +55,9 @@ jobs:
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           TRIGGER: ${{ github.event_name }}
           TEST_EMAIL: ${{ inputs.probar_correo }}
+          TEST_LOGIN: ${{ inputs.probar_login }}
         run: node monitor/check.js
-
+ 
       - name: Guardar resultados
         run: |
           git config user.name "monitor-globaleduca"
@@ -65,3 +70,4 @@ jobs:
             sleep 5
           done
           exit 1
+ 
