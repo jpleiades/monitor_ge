@@ -34,7 +34,6 @@ a{color:inherit}
   border:1px solid var(--ink);background:var(--ink);color:var(--surface)}
 .btn[disabled]{opacity:.55;cursor:progress}
 .top-actions{display:flex;gap:10px;flex-wrap:wrap}
-footer button + button{margin-left:14px}
 .err{color:var(--down)}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
 
@@ -127,7 +126,6 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
   <header class="top">
     <div class="brand">GlobalEduca<span>Estado de la plataforma en el colegio demo02</span></div>
     <div class="top-actions">
-      <button class="btn ghost" id="verifylogin">Verificar login</button>
       <button class="btn" id="verify">Verificar ahora</button>
     </div>
   </header>
@@ -157,8 +155,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 
   <footer>
     La comprobación se hace automáticamente cada 20 minutos con GitHub Actions: entra con el usuario de prueba en cada módulo y guarda una captura si algo falla. Las ejecuciones programadas pueden llegar con unos minutos de retraso.
-    <button id="tokenlink">Configurar los botones de verificación</button>
-    <button id="lastlogin">Ver la última prueba de login</button>
+    <button id="tokenlink">Configurar el botón Verificar ahora</button>
   </footer>
 </main>
 
@@ -170,7 +167,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 </dialog>
 
 <dialog id="tokendlg">
-  <div class="dlg-head"><h3>Configurar los botones de verificación</h3><button class="btn ghost" data-close>Cerrar</button></div>
+  <div class="dlg-head"><h3>Configurar Verificar ahora</h3><button class="btn ghost" data-close>Cerrar</button></div>
   <div class="dlg-body">
     <p class="help">Para lanzar una comprobación desde esta página hace falta un token de GitHub con permiso sobre este repositorio. Se guarda solo en este navegador; no se sube a ningún sitio.</p>
     <p class="help">Créalo en <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">esta página de GitHub</a> (tu foto › Settings › Developer settings › Personal access tokens › Fine-grained tokens). Acceso solo al repositorio monitor_ge, con el permiso Actions en lectura y escritura y Contents en solo lectura.</p>
@@ -386,31 +383,6 @@ $('verify').addEventListener('click', () => runWorkflow($('verify'), 'Verificand
     const last = DATA.runs[DATA.runs.length - 1];
     msg(`Comprobación terminada a las ${hm.format(Date.parse(last.t))}: ${STATE_TEXT[last.overall].toLowerCase()}.`);
   }));
-
-$('verifylogin').addEventListener('click', () => runWorkflow($('verifylogin'), 'Probando login…', 'Verificar login',
-  { probar_login: 'true' }, 'Probando el login y haciendo capturas. Suele tardar uno o dos minutos…', () => {
-    msg(DATA.loginTest ? `Prueba de login terminada: ${DATA.loginTest.ok ? 'correcta' : 'fallida'}.` : 'Prueba de login terminada.');
-    openLoginTest();
-  }));
-
-function openLoginTest(){
-  const lt = DATA && DATA.loginTest;
-  if (!lt) { msg('Aún no hay ninguna prueba de login. Pulsa Verificar login.'); return; }
-  const i = lt.info || {};
-  const row = (k, v) => `<div class="mod"><span></span><span>${esc(k)}</span><span>${v}</span></div>`;
-  $('dtitle').textContent = `Prueba de login, ${dayHm.format(Date.parse(lt.t))}`;
-  $('dbody').innerHTML = `<div class="run">
-      <div class="run-title"><span class="dot ${lt.ok ? 'ok' : 'down'}"></span>${lt.ok ? 'Login correcto' : 'Login fallido'} <small>${esc(lt.module)}</small></div>
-      ${lt.error ? `<p class="err" style="margin:4px 0 10px">${esc(lt.error)}</p>` : ''}
-      ${row('Usuario', esc(lt.user))}
-      ${i.userTyped != null ? row('En la caja', i.userTyped === lt.user ? 'El usuario se escribió completo' : `<span class="err">Quedó escrito «${esc(i.userTyped)}»</span>`) : ''}
-      ${i.passTyped != null ? row('Contraseña', i.passTyped === i.passExpected ? `Se escribieron sus ${i.passExpected} caracteres` : `<span class="err">Se escribieron ${i.passTyped} de ${i.passExpected} caracteres</span>`) : ''}
-      ${i.submit ? row('Envío', esc(i.submit)) : ''}
-      ${lt.shots.map(sh => `<div class="mod"><span></span>${shotHTML(sh.file, sh.caption)}</div>`).join('')}
-    </div>`;
-  $('detail').showModal();
-}
-$('lastlogin').addEventListener('click', openLoginTest);
 
 async function refresh(){
   try { DATA = await loadData(false); render(); }

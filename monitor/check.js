@@ -200,7 +200,6 @@ function loadData() {
 
 function pruneScreenshots(data) {
   const keep = new Set();
-  (data.loginTest?.shots || []).forEach((sh) => keep.add(path.basename(sh.file)));
   data.runs.forEach((r) => r.modules.forEach((m) => [m.screenshot, m.screenshotBefore].forEach((f) => f && keep.add(path.basename(f)))));
   for (const f of fs.readdirSync(SHOTS_DIR)) {
     if (f.endsWith('.jpg') && !keep.has(f)) fs.rmSync(path.join(SHOTS_DIR, f));
@@ -245,72 +244,13 @@ async function sendAlert(run) {
   return sendMail(config.alertSubject, text, attachments);
 }
 
-// Prueba de login a petición: teclea usuario y contraseña, hace capturas y pulsa Iniciar sesión
-async function loginTest() {
-  const mod = config.modules[0];
-  const now = new Date();
-  const id = now.getTime();
-  const shots = [];
-  const result = { t: now.toISOString(), module: mod.name, url: mod.url, user: USER, ok: false, error: null, shots };
-  let page;
-  const shot = async (name, caption) => {
-    const file = `logintest_${id}_${name}.jpg`;
-    await page.screenshot({ path: path.join(SHOTS_DIR, file), type: 'jpeg', quality: 75, timeout: 15000 });
-    shots.push({ file: `screenshots/${file}`, caption });
-  };
-  const browser = await chromium.launch();
-  try {
-    const context = await browser.newContext({ viewport: { width: 1366, height: 850 }, locale: 'es-ES', timezoneId: 'Europe/Madrid' });
-    page = await context.newPage();
-    await page.goto(mod.url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
-    await settle(page);
-    if (!(await hasLoginForm(page))) {
-      await shot('inicio', 'Pantalla al abrir el módulo');
-      throw new Error('Al abrir el módulo no aparece la pantalla de login.');
-    }
-    result.info = await login(page, async (user, pass) => {
-      // Captura 1: cajas resaltadas y contraseña visible solo con su primer y último carácter
-      const n = PASS.length;
-      const masked = n <= 2 ? '•'.repeat(n) : PASS[0] + '•'.repeat(n - 2) + PASS[n - 1];
-      const mark = (el, on) => el.evaluate((node, on) => { node.style.outline = on ? '3px solid #e11d48' : ''; }, on);
-      await mark(user, true); await mark(pass, true);
-      await pass.evaluate((node, m) => { node.type = 'text'; node.value = m; }, masked);
-      await shot('datos', `Datos escritos: usuario completo; contraseña con ${n} caracteres (solo se muestran el primero y el último)`);
-      // Se vuelve a teclear la contraseña real y se hace la captura tal como se enviará
-      await pass.evaluate((node) => { node.type = 'password'; node.value = ''; });
-      await typeInto(pass, PASS);
-      await pass.press('Tab').catch(() => {});
-      await shot('antes', 'Justo antes de pulsar Iniciar sesión');
-      await mark(user, false); await mark(pass, false);
-    });
-    await shot('resultado', 'Después de pulsar Iniciar sesión: login correcto');
-    result.ok = true;
-    await logout(page);
-  } catch (e) {
-    result.error = String((e && e.message) || e).split('\n')[0].slice(0, 400);
-    if (e && e.info) result.info = e.info;
-    if (page) await shot('resultado', 'Después de pulsar Iniciar sesión').catch(() => {});
-  } finally {
-    await browser.close();
-  }
-  console.log(result.ok ? 'Prueba de login: correcta' : `Prueba de login: fallida. ${result.error}`);
-  const data = loadData();
-  data.loginTest = result;
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data));
-  pruneScreenshots(data);
-}
-
 (async () => {
   if (process.env.TEST_EMAIL === 'true') {
     const err = await sendMail(`${config.alertSubject} (prueba)`,
       `Correo de prueba del monitor de GlobalEduca.\nSi lo recibes, las alertas de caída llegarán a esta dirección.\n\nPágina de estado: ${config.statusPageUrl}\n`);
     process.exit(err ? 1 : 0);
   }
-  if (process.env.TEST_LOGIN === 'true') {
-    fs.mkdirSync(SHOTS_DIR, { recursive: true });
-    await loginTest();
-    return;
-  }
+
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, '-');
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
@@ -338,6 +278,7 @@ async function loginTest() {
   }
 
   const cutoff = now.getTime() - config.retentionHours * 3600e3;
+  delete data.loginTest;
   data.modules = config.modules;
   data.runs = [...data.runs, run].filter((r) => Date.parse(r.t) >= cutoff);
   data.updated = now.toISOString();
