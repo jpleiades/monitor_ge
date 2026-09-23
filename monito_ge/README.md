@@ -2,7 +2,7 @@
 
 Página de estado de la plataforma GlobalEduca en el colegio de pruebas **demo02**. Cada 10 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
 
-Página publicada: https://jpleiades.github.io/monitor_ge/
+Página publicada: https://jpleiades.github.io/monito_ge/
 
 | Módulo   | URL comprobada                          |
 |----------|-----------------------------------------|
@@ -17,7 +17,7 @@ Colores: verde, todos los módulos funcionan; naranja, falla alguno; rojo, no re
 ## Instalación (todo desde la web de GitHub)
 
 ### 1. Crear el repositorio
-En https://github.com/new: nombre `monitor_ge`, **Public**, sin README. Pulsa *Create repository*.
+En https://github.com/new: nombre `monito_ge`, **Public**, sin README. Pulsa *Create repository*.
 
 ### 2. Subir los archivos
 En el repositorio vacío pulsa *uploading an existing file* y arrastra el **contenido** de la carpeta descomprimida (no la carpeta en sí): `.github`, `docs`, `monitor`, `package.json` y `README.md`. Pulsa *Commit changes*.
@@ -53,7 +53,7 @@ Lo recomendable es un buzón dedicado (p. ej. monitor@globaleduca.com). El corre
 ### 7. Botón «Verificar ahora»
 Lanza una comprobación al momento. Necesita un token de GitHub que se guarda solo en tu navegador:
 1. GitHub › tu foto › *Settings › Developer settings › Personal access tokens › Fine-grained tokens › Generate new token*.
-2. *Repository access*: **Only select repositories** › `monitor_ge`.
+2. *Repository access*: **Only select repositories** › `monito_ge`.
 3. *Permissions › Repository permissions*: **Actions: Read and write**, **Contents: Read-only**.
 4. Copia el token, abre la página, pulsa *Verificar ahora* y pégalo.
 
