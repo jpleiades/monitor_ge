@@ -35,6 +35,8 @@
     }
   ],
   "selectors": {
+    "userText": "Usuario",
+    "passwordText": "Contraseña",
     "user": "input[name*='user' i], input[id*='user' i], input[name*='login' i], input[id*='login' i], input[name*='email' i], input[type='email']",
     "password": "input[type='password']",
     "submit": [

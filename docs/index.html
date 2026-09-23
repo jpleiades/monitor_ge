@@ -63,7 +63,7 @@ a{color:inherit}
 .dot.ok{background:var(--ok)} .dot.partial{background:var(--partial)} .dot.down{background:var(--down)}
 .uptime{font-size:14px;color:var(--muted);white-space:nowrap}
 
-.bars{display:flex;gap:2px;height:34px}
+.bars{display:flex;gap:3px;height:34px}
 .row.overall .bars{height:52px}
 .bar{flex:1 1 0;min-width:1px;border:0;padding:0;border-radius:2px;background:var(--none);cursor:default}
 .bar.ok{background:var(--ok)}
@@ -101,6 +101,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 .shot{grid-column:2/-1;margin:6px 0 10px}
 .shot img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px}
 .shot a{font-size:13px;color:var(--muted)}
+.shot-cap{margin:0 0 6px;font-size:14px;font-weight:500}
 .field{display:block;margin:14px 0 6px;font-weight:500}
 .field input{display:block;width:100%;margin-top:6px;font:inherit;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .help{font-size:14px;color:var(--muted);margin:8px 0}
@@ -138,7 +139,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 
   <section class="panel">
     <h2>Últimas 24 horas</h2>
-    <p class="sub">Cada barra son 10 minutos. Pulsa una barra para ver el detalle y la captura del error.</p>
+    <p class="sub">Cada barra son 20 minutos. Pulsa una barra para ver el detalle y la captura del error.</p>
     <div id="rows"></div>
     <div class="legend">
       <span><i style="background:var(--ok)"></i>Todos los módulos funcionan</span>
@@ -149,7 +150,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
   </section>
 
   <footer>
-    La comprobación se hace automáticamente cada 10 minutos con GitHub Actions: entra con el usuario de prueba en cada módulo y guarda una captura si algo falla. Las ejecuciones programadas pueden llegar con unos minutos de retraso.
+    La comprobación se hace automáticamente cada 20 minutos con GitHub Actions: entra con el usuario de prueba en cada módulo y guarda una captura si algo falla. Las ejecuciones programadas pueden llegar con unos minutos de retraso.
     <button id="tokenlink">Configurar el botón Verificar ahora</button>
   </footer>
 </main>
@@ -177,7 +178,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 
 <script>
 const CFG = { owner:'jpleiades', repo:'monitor_ge', branch:'main', workflow:'monitor.yml' };
-const SLOT = 10 * 60 * 1000, SLOTS = 144, RANK = { ok:0, partial:1, down:2 };
+const SLOT = 20 * 60 * 1000, SLOTS = 72, RANK = { ok:0, partial:1, down:2 };
 const RAW = `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}/docs/`;
 const API = `https://api.github.com/repos/${CFG.owner}/${CFG.repo}`;
 const ACTIONS_URL = `https://github.com/${CFG.owner}/${CFG.repo}/actions/workflows/${CFG.workflow}`;
@@ -274,15 +275,20 @@ function render(){
       : last.overall === 'down' ? 'Ningún módulo responde'
       : `${failing.length === 1 ? 'Falla' : 'Fallan'} ${failing.join(', ').replace(/, ([^,]*)$/, ' y $1')}`;
     const mins = Math.round((Date.now() - Date.parse(last.t)) / 60000);
-    const stale = mins > 30;
+    const stale = mins > 60;
     const lc = $('lastcheck');
     lc.classList.toggle('stale', stale);
     lc.textContent = `Última comprobación ${last.trigger === 'manual' ? 'manual' : 'automática'} a las ${hm.format(Date.parse(last.t))}, hace ${mins < 1 ? 'menos de un minuto' : mins === 1 ? '1 minuto' : mins + ' minutos'}.`
-      + (stale ? ' El monitor lleva más de media hora sin ejecutarse: revisa GitHub Actions.' : '');
+      + (stale ? ' El monitor lleva más de una hora sin ejecutarse: revisa GitHub Actions.' : '');
   }
   const lastState = (id) => { const m = last?.modules.find(x => x.id === id); return !m ? 'none' : m.ok ? 'ok' : 'down'; };
   $('rows').innerHTML = rowHTML('Plataforma completa', '', null, last ? last.overall : 'none')
     + mods.map(m => rowHTML(m.name, m.url, m.id, lastState(m.id))).join('');
+}
+
+function shotHTML(file, caption){
+  const url = esc(IMG_BASE + file);
+  return `<div class="shot"><p class="shot-cap">${esc(caption)}</p><a href="${url}" target="_blank" rel="noopener"><img loading="lazy" src="${url}" alt="${esc(caption)}"></a><a href="${url}" target="_blank" rel="noopener">Abrir captura a tamaño completo</a></div>`;
 }
 
 function openSlot(i){
@@ -301,7 +307,8 @@ function openSlot(i){
           <span>${esc(meta.name)}</span>
           <span class="${m.ok ? '' : 'err'}">${m.ok ? 'Funciona' : esc(m.error || 'Falla')}</span>
           <span class="ms">${m.ms != null ? (m.ms / 1000).toLocaleString('es-ES', { maximumFractionDigits:1 }) + ' s' : ''}</span>
-          ${m.screenshot ? `<div class="shot"><a href="${esc(IMG_BASE + m.screenshot)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(IMG_BASE + m.screenshot)}" alt="Captura de ${esc(meta.name)} en el momento del error"></a><a href="${esc(IMG_BASE + m.screenshot)}" target="_blank" rel="noopener">Abrir captura a tamaño completo</a></div>` : ''}
+          ${m.screenshotBefore ? shotHTML(m.screenshotBefore, `Antes de pulsar Iniciar sesión en ${meta.name}`) : ''}
+          ${m.screenshot ? shotHTML(m.screenshot, m.screenshotBefore ? `Resultado en ${meta.name}` : `Captura de ${meta.name} en el momento del error`) : ''}
         </div>`;
       }).join('')}
     </div>`).join('');

@@ -1,6 +1,6 @@
 # Monitor GlobalEduca
 
-Página de estado de la plataforma GlobalEduca en el colegio de pruebas **demo02**. Cada 10 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
+Página de estado de la plataforma GlobalEduca en el colegio de pruebas **demo02**. Cada 20 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
 
 Página publicada: https://jpleiades.github.io/monitor_ge/
 
@@ -42,13 +42,15 @@ Los secretos no se ven en el código ni en los registros de ejecución.
 - *Settings › Pages*: *Source* = **Deploy from a branch**, rama `main`, carpeta `/docs`. Guarda.
 
 ### 5. Primera comprobación
-*Actions › Monitor GlobalEduca › Run workflow*. En 2-3 minutos debe aparecer la primera barra en la página. A partir de ahí se ejecuta solo cada 10 minutos.
+*Actions › Monitor GlobalEduca › Run workflow*. En 2-3 minutos debe aparecer la primera barra en la página. A partir de ahí se ejecuta solo cada 20 minutos.
 
-### 6. Correo de alerta
-- **Microsoft 365**: `SMTP_HOST` = `smtp.office365.com`, puerto `587`. El buzón debe tener activado *SMTP AUTH* (en muchos tenants viene desactivado; lo activa el administrador en el centro de administración de Microsoft 365, en el buzón › Correo › Administrar aplicaciones de correo electrónico).
-- **Google Workspace / Gmail**: `SMTP_HOST` = `smtp.gmail.com`, puerto `465`, y en `SMTP_PASS` una contraseña de aplicación (requiere verificación en dos pasos).
+### 6. Correo de alerta (Gmail)
+1. Usa una cuenta de Gmail para enviar (mejor una dedicada) y activa la verificación en dos pasos en https://myaccount.google.com/security.
+2. Crea una contraseña de aplicación en https://myaccount.google.com/apppasswords (nombre: `monitor_ge`). Google muestra 16 letras; se pueden pegar con o sin espacios.
+3. Secretos en GitHub: `SMTP_HOST` = `smtp.gmail.com`, `SMTP_PORT` = `465`, `SMTP_USER` = la dirección de Gmail, `SMTP_PASS` = la contraseña de aplicación.
+4. Prueba: *Actions › Monitor GlobalEduca › Run workflow*, marca **probar_correo** y pulsa *Run workflow*. Debe llegar un correo con asunto «CAIDA (prueba)».
 
-Lo recomendable es un buzón dedicado (p. ej. monitor@globaleduca.com). El correo se envía cuando empieza una caída o cuando cambia qué módulos fallan; no se repite cada 10 minutos mientras dura la misma caída. Lleva adjuntas las capturas.
+El correo se envía cuando empieza una caída o cuando cambia qué módulos fallan; no se repite en cada comprobación. Lleva adjuntas las capturas. El destinatario se cambia en `alertTo` de `monitor/config.json`.
 
 ### 7. Botón «Verificar ahora»
 Lanza una comprobación al momento. Necesita un token de GitHub que se guarda solo en tu navegador:

@@ -30,9 +30,9 @@ let loginBroken = false; // si el acceso falla una vez, no se reintenta en esta 
 const settle = (page) => page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 const visible = (loc) => loc.isVisible().catch(() => false);
 
-// Devuelve el primer elemento visible que cumpla el selector (o null)
+// Devuelve el primer elemento visible que cumpla el selector o locator (o null)
 async function firstVisible(page, selector) {
-  const loc = page.locator(selector);
+  const loc = typeof selector === 'string' ? page.locator(selector) : selector;
   const n = await loc.count().catch(() => 0);
   for (let i = 0; i < n; i++) {
     const el = loc.nth(i);
@@ -41,31 +41,65 @@ async function firstVisible(page, selector) {
   return null;
 }
 
-async function hasLoginForm(page) {
-  return !!(await firstVisible(page, config.selectors.password));
+// Busca un campo por su texto indicativo ("Usuario", "Contraseña"), luego por etiqueta y por último por selector
+async function findField(page, text, selectors) {
+  for (const cand of [
+    page.getByPlaceholder(text, { exact: true }),
+    page.getByLabel(text, { exact: true }),
+    page.getByPlaceholder(text),
+    ...selectors,
+  ]) {
+    const el = await firstVisible(page, cand);
+    if (el && await el.evaluate((n) => n.tagName === 'INPUT').catch(() => false)) return el;
+  }
+  return null;
 }
 
-async function login(page) {
-  const pass = await firstVisible(page, config.selectors.password);
-  const user = (await firstVisible(page, config.selectors.user)) || (await firstVisible(page,
-    "input[type=text], input[type=email], input:not([type])"));
-  if (!user) throw new Error('No se encuentra el campo de usuario en la pantalla de acceso.');
+const describe = async (el) => {
+  const a = await el.evaluate((n) => ({ name: n.name, id: n.id, ph: n.placeholder, type: n.type })).catch(() => ({}));
+  return `name="${a.name || ''}" id="${a.id || ''}" placeholder="${a.ph || ''}" type="${a.type || ''}"`;
+};
+
+async function hasLoginForm(page) {
+  return !!(await firstVisible(page, config.selectors.password))
+    || !!(await firstVisible(page, page.getByPlaceholder(config.selectors.passwordText || 'Contraseña', { exact: true })));
+}
+
+async function typeInto(el, value) {
+  await el.click({ timeout: 10000 });
+  await el.fill('');
+  await el.pressSequentially(value, { delay: 40 });
+}
+
+async function login(page, shotBefore) {
+  const s = config.selectors;
+  const user = await findField(page, s.userText || 'Usuario',
+    [s.user, 'input[type=text], input[type=email], input:not([type])']);
+  const pass = await findField(page, s.passwordText || 'Contraseña', [s.password]);
+  if (!user || !pass) throw Object.assign(new Error(`No se encuentra el campo ${!user ? 'Usuario' : 'Contraseña'} en la pantalla de acceso.`), { code: LOGIN_FAILED });
+  console.log(`  Campo Usuario: ${await describe(user)}`);
+  console.log(`  Campo Contraseña: ${await describe(pass)}`);
   const before = new Set((await page.locator('body').innerText().catch(() => '')).split('\n').map((l) => l.trim()));
+
   // Se teclea carácter a carácter (como una persona): algunos formularios solo leen el valor en eventos de teclado
-  await user.click({ timeout: 10000 });
-  await user.fill('');
-  await user.pressSequentially(USER, { delay: 40 });
-  await pass.click({ timeout: 10000 });
-  await pass.fill('');
-  await pass.pressSequentially(PASS, { delay: 40 });
+  await typeInto(user, USER);
+  await typeInto(pass, PASS);
   await pass.press('Tab').catch(() => {});
+
+  // Comprobación de lo que ha quedado escrito en cada caja
+  const uVal = await user.inputValue().catch(() => null);
+  const pLen = (await pass.inputValue().catch(() => '')).length;
+  const fieldsOk = uVal === USER && pLen === PASS.length;
+  console.log(`  Usuario escrito: ${uVal === USER ? 'correcto' : `distinto ("${uVal}")`}; contraseña: ${pLen === PASS.length ? 'completa' : `${pLen} de ${PASS.length} caracteres`}`);
+  await page.screenshot({ path: shotBefore.abs, type: 'jpeg', quality: 60, timeout: 15000 }).catch(() => {});
+
   // Se prueba cada selector en orden, para pulsar "Iniciar sesión" y nunca "Iniciar sesión con Google/Microsoft"
   let submit = null, how = 'tecla Enter';
-  for (const sel of config.selectors.submit) {
+  for (const sel of s.submit) {
     submit = await firstVisible(page, sel);
     if (submit) { how = `botón "${(await submit.innerText().catch(() => '')).trim() || sel}"`; break; }
   }
-  console.log(`  Login: campo usuario "${await user.getAttribute('name').catch(() => '?')}", envío con ${how}`);
+  console.log(`  Envío con ${how}`);
   if (submit) await submit.click();
   else await pass.press('Enter');
   await page.waitForLoadState('domcontentloaded', { timeout: config.timeoutMs }).catch(() => {});
@@ -74,9 +108,11 @@ async function login(page) {
     loginBroken = true;
     const after = (await page.locator('body').innerText().catch(() => '')).split('\n').map((l) => l.trim());
     const msg = after.filter((l) => l && !before.has(l)).join(' ').slice(0, 200);
-    const err = new Error(`El acceso con ${USER} no se completó: sigue apareciendo la pantalla de login.`
-      + (msg ? ` Mensaje de la página: ${msg}` : ' La página no muestra ningún mensaje nuevo.'));
+    const err = new Error(`El acceso con ${USER} no se completó.`
+      + (msg ? ` Mensaje de la página: ${msg}.` : ' La página no muestra ningún mensaje nuevo.')
+      + (fieldsOk ? ' Usuario y contraseña se escribieron completos en sus cajas.' : ` Las cajas no se rellenaron bien (usuario: "${uVal}", contraseña: ${pLen} de ${PASS.length} caracteres).`));
     err.code = LOGIN_FAILED;
+    err.keepBefore = true;
     throw err;
   }
 }
@@ -98,6 +134,8 @@ async function attempt(context, mod, stamp) {
   const page = await context.newPage();
   const started = Date.now();
   const result = { id: mod.id, ok: false, http: null, ms: null, error: null, screenshot: null };
+  const beforeFile = `${stamp}_${mod.id}_antes.jpg`;
+  const shotBefore = { abs: path.join(SHOTS_DIR, beforeFile), rel: `screenshots/${beforeFile}` };
   try {
     const resp = await page.goto(mod.url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
     result.http = resp ? resp.status() : null;
@@ -110,7 +148,7 @@ async function attempt(context, mod, stamp) {
         err.code = LOGIN_FAILED;
         throw err;
       }
-      await login(page);
+      await login(page, shotBefore);
     }
 
     const text = await page.locator('body').innerText({ timeout: 10000 }).catch(() => '');
@@ -123,6 +161,7 @@ async function attempt(context, mod, stamp) {
   } catch (e) {
     result.error = String((e && e.message) || e).split('\n')[0].slice(0, 300);
     result.code = e && e.code;
+    if (e && e.keepBefore && fs.existsSync(shotBefore.abs)) result.screenshotBefore = shotBefore.rel;
     try {
       const file = `${stamp}_${mod.id}.jpg`;
       await page.screenshot({ path: path.join(SHOTS_DIR, file), type: 'jpeg', quality: 60, timeout: 15000 });
@@ -130,6 +169,7 @@ async function attempt(context, mod, stamp) {
     } catch (_) { /* sin captura si la página ni siquiera se pudo abrir */ }
   } finally {
     result.ms = Date.now() - started;
+    if (!result.screenshotBefore) fs.rmSync(shotBefore.abs, { force: true });
     await page.close().catch(() => {});
   }
   return result;
@@ -155,43 +195,56 @@ function loadData() {
 
 function pruneScreenshots(data) {
   const keep = new Set();
-  data.runs.forEach((r) => r.modules.forEach((m) => m.screenshot && keep.add(path.basename(m.screenshot))));
+  data.runs.forEach((r) => r.modules.forEach((m) => [m.screenshot, m.screenshotBefore].forEach((f) => f && keep.add(path.basename(f)))));
   for (const f of fs.readdirSync(SHOTS_DIR)) {
     if (f.endsWith('.jpg') && !keep.has(f)) fs.rmSync(path.join(SHOTS_DIR, f));
   }
 }
 
-async function sendAlert(run) {
+// Envía un correo por SMTP (Gmail: smtp.gmail.com, puerto 465, contraseña de aplicación)
+async function sendMail(subject, text, attachments = []) {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     console.warn('Correo no enviado: faltan los secretos SMTP_HOST, SMTP_USER o SMTP_PASS.');
     return 'Faltan los datos del servidor de correo';
   }
+  const port = Number(SMTP_PORT || 465);
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST.trim(), port, secure: port === 465,
+    auth: { user: SMTP_USER.trim(), pass: SMTP_PASS.replace(/\s+/g, '') }, // Gmail muestra la clave con espacios
+  });
+  try {
+    await transporter.sendMail({ from: MAIL_FROM || SMTP_USER, to: config.alertTo, subject, text, attachments });
+    console.log(`Correo "${subject}" enviado a ${config.alertTo}`);
+    return null;
+  } catch (e) {
+    let hint = '';
+    if (/534|Application-specific/i.test(e.message)) hint = ' Gmail exige una contraseña de aplicación en SMTP_PASS.';
+    else if (/535|BadCredentials|Username and Password not accepted/i.test(e.message)) hint = ' Gmail no acepta SMTP_USER o SMTP_PASS: revisa la dirección y la contraseña de aplicación.';
+    else if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(e.message)) hint = ' Revisa SMTP_HOST (smtp.gmail.com) y SMTP_PORT (465).';
+    console.error('Error enviando el correo:', e.message + hint);
+    return (e.message.slice(0, 160) + hint).trim();
+  }
+}
+
+async function sendAlert(run) {
   const names = Object.fromEntries(config.modules.map((m) => [m.id, m]));
   const when = new Date(run.t).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
   const summary = run.overall === 'down' ? 'Ningún módulo responde.' : 'Algún módulo no funciona.';
   const lines = run.modules.map((m) =>
     `${m.ok ? 'OK   ' : 'FALLA'}  ${names[m.id].name}  ${names[m.id].url}${m.ok ? '' : `\n       ${m.error}`}`);
   const text = `${summary}\nComprobación: ${when} (${run.trigger})\n\n${lines.join('\n')}\n\nPágina de estado: ${config.statusPageUrl}\n`;
-  const port = Number(SMTP_PORT || 587);
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST, port, secure: port === 465, auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
   const attachments = run.modules.filter((m) => m.screenshot)
     .map((m) => ({ filename: `${m.id}.jpg`, path: path.join(DOCS, m.screenshot) }));
-  try {
-    await transporter.sendMail({
-      from: MAIL_FROM || SMTP_USER, to: config.alertTo, subject: config.alertSubject, text, attachments,
-    });
-    console.log(`Correo "${config.alertSubject}" enviado a ${config.alertTo}`);
-    return null;
-  } catch (e) {
-    console.error('Error enviando el correo:', e.message);
-    return e.message.slice(0, 200);
-  }
+  return sendMail(config.alertSubject, text, attachments);
 }
 
 (async () => {
+  if (process.env.TEST_EMAIL === 'true') {
+    const err = await sendMail(`${config.alertSubject} (prueba)`,
+      `Correo de prueba del monitor de GlobalEduca.\nSi lo recibes, las alertas de caída llegarán a esta dirección.\n\nPágina de estado: ${config.statusPageUrl}\n`);
+    process.exit(err ? 1 : 0);
+  }
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, '-');
   fs.mkdirSync(SHOTS_DIR, { recursive: true });
