@@ -11,7 +11,7 @@ const DATA_FILE = path.join(DOCS, 'data', 'status.json');
 const SHOTS_DIR = path.join(DOCS, 'screenshots');
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
 
-const USER = process.env.GE_USER || config.user;
+const USER = (process.env.GE_USER || config.user || '').trim();
 const PASS = process.env.GE_PASSWORD;
 const TRIGGER = process.env.TRIGGER === 'workflow_dispatch' ? 'manual'
   : process.env.TRIGGER === 'schedule' ? 'automatica' : (process.env.TRIGGER || 'local');
@@ -20,6 +20,9 @@ if (!PASS) {
   console.error('Falta el secreto GE_PASSWORD. Créalo en Settings > Secrets and variables > Actions.');
   process.exit(1);
 }
+
+console.log(`Usuario: "${USER}" (${process.env.GE_USER ? 'variable GE_USER' : 'config.json'})`);
+if (PASS !== PASS.trim()) console.warn('AVISO: el secreto GE_PASSWORD empieza o termina con espacios o saltos de línea.');
 
 const LOGIN_FAILED = 'LOGIN_FAILED';
 let loginBroken = false; // si el acceso falla una vez, no se reintenta en esta ejecución (evita bloquear la cuenta)
@@ -47,18 +50,32 @@ async function login(page) {
   const user = (await firstVisible(page, config.selectors.user)) || (await firstVisible(page,
     "input[type=text], input[type=email], input:not([type])"));
   if (!user) throw new Error('No se encuentra el campo de usuario en la pantalla de acceso.');
-  await user.fill(USER, { timeout: 10000 });
-  await pass.fill(PASS, { timeout: 10000 });
+  const before = new Set((await page.locator('body').innerText().catch(() => '')).split('\n').map((l) => l.trim()));
+  // Se teclea carácter a carácter (como una persona): algunos formularios solo leen el valor en eventos de teclado
+  await user.click({ timeout: 10000 });
+  await user.fill('');
+  await user.pressSequentially(USER, { delay: 40 });
+  await pass.click({ timeout: 10000 });
+  await pass.fill('');
+  await pass.pressSequentially(PASS, { delay: 40 });
+  await pass.press('Tab').catch(() => {});
   // Se prueba cada selector en orden, para pulsar "Iniciar sesión" y nunca "Iniciar sesión con Google/Microsoft"
-  let submit = null;
-  for (const sel of config.selectors.submit) { submit = await firstVisible(page, sel); if (submit) break; }
+  let submit = null, how = 'tecla Enter';
+  for (const sel of config.selectors.submit) {
+    submit = await firstVisible(page, sel);
+    if (submit) { how = `botón "${(await submit.innerText().catch(() => '')).trim() || sel}"`; break; }
+  }
+  console.log(`  Login: campo usuario "${await user.getAttribute('name').catch(() => '?')}", envío con ${how}`);
   if (submit) await submit.click();
   else await pass.press('Enter');
   await page.waitForLoadState('domcontentloaded', { timeout: config.timeoutMs }).catch(() => {});
   await settle(page);
   if (await hasLoginForm(page)) {
     loginBroken = true;
-    const err = new Error(`El acceso con ${USER} no se completó: sigue apareciendo la pantalla de login.`);
+    const after = (await page.locator('body').innerText().catch(() => '')).split('\n').map((l) => l.trim());
+    const msg = after.filter((l) => l && !before.has(l)).join(' ').slice(0, 200);
+    const err = new Error(`El acceso con ${USER} no se completó: sigue apareciendo la pantalla de login.`
+      + (msg ? ` Mensaje de la página: ${msg}` : ' La página no muestra ningún mensaje nuevo.'));
     err.code = LOGIN_FAILED;
     throw err;
   }

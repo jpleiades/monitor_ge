@@ -165,7 +165,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
   <div class="dlg-head"><h3>Configurar Verificar ahora</h3><button class="btn ghost" data-close>Cerrar</button></div>
   <div class="dlg-body">
     <p class="help">Para lanzar una comprobación desde esta página hace falta un token de GitHub con permiso sobre este repositorio. Se guarda solo en este navegador; no se sube a ningún sitio.</p>
-    <p class="help">Créalo en GitHub: Settings › Developer settings › Fine-grained tokens. Acceso solo al repositorio monitor_ge, con el permiso Actions en lectura y escritura.</p>
+    <p class="help">Créalo en <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">esta página de GitHub</a> (tu foto › Settings › Developer settings › Personal access tokens › Fine-grained tokens). Acceso solo al repositorio monitor_ge, con el permiso Actions en lectura y escritura y Contents en solo lectura.</p>
     <label class="field">Token de GitHub<input id="tokeninput" type="password" autocomplete="off" placeholder="github_pat_…"></label>
     <p class="help">Sin token, puedes lanzar la comprobación desde <a id="actionslink" target="_blank" rel="noopener">GitHub Actions</a> con el botón Run workflow.</p>
     <div class="actions">
