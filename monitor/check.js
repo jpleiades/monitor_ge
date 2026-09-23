@@ -71,14 +71,15 @@ async function typeInto(el, value) {
   await el.pressSequentially(value, { delay: 40 });
 }
 
-async function login(page, shotBefore) {
+async function login(page, afterType) {
   const s = config.selectors;
   const user = await findField(page, s.userText || 'Usuario',
     [s.user, 'input[type=text], input[type=email], input:not([type])']);
   const pass = await findField(page, s.passwordText || 'Contraseña', [s.password]);
   if (!user || !pass) throw Object.assign(new Error(`No se encuentra el campo ${!user ? 'Usuario' : 'Contraseña'} en la pantalla de acceso.`), { code: LOGIN_FAILED });
-  console.log(`  Campo Usuario: ${await describe(user)}`);
-  console.log(`  Campo Contraseña: ${await describe(pass)}`);
+  const info = { userField: await describe(user), passField: await describe(pass) };
+  console.log(`  Campo Usuario: ${info.userField}`);
+  console.log(`  Campo Contraseña: ${info.passField}`);
   const before = new Set((await page.locator('body').innerText().catch(() => '')).split('\n').map((l) => l.trim()));
 
   // Se teclea carácter a carácter (como una persona): algunos formularios solo leen el valor en eventos de teclado
@@ -90,8 +91,9 @@ async function login(page, shotBefore) {
   const uVal = await user.inputValue().catch(() => null);
   const pLen = (await pass.inputValue().catch(() => '')).length;
   const fieldsOk = uVal === USER && pLen === PASS.length;
+  Object.assign(info, { userTyped: uVal, passTyped: pLen, passExpected: PASS.length, fieldsOk });
   console.log(`  Usuario escrito: ${uVal === USER ? 'correcto' : `distinto ("${uVal}")`}; contraseña: ${pLen === PASS.length ? 'completa' : `${pLen} de ${PASS.length} caracteres`}`);
-  await page.screenshot({ path: shotBefore.abs, type: 'jpeg', quality: 60, timeout: 15000 }).catch(() => {});
+  if (afterType) await afterType(user, pass).catch((e) => console.warn('  Captura previa fallida:', e.message));
 
   // Se prueba cada selector en orden, para pulsar "Iniciar sesión" y nunca "Iniciar sesión con Google/Microsoft"
   let submit = null, how = 'tecla Enter';
@@ -100,6 +102,7 @@ async function login(page, shotBefore) {
     if (submit) { how = `botón "${(await submit.innerText().catch(() => '')).trim() || sel}"`; break; }
   }
   console.log(`  Envío con ${how}`);
+  info.submit = how;
   if (submit) await submit.click();
   else await pass.press('Enter');
   await page.waitForLoadState('domcontentloaded', { timeout: config.timeoutMs }).catch(() => {});
@@ -113,8 +116,10 @@ async function login(page, shotBefore) {
       + (fieldsOk ? ' Usuario y contraseña se escribieron completos en sus cajas.' : ` Las cajas no se rellenaron bien (usuario: "${uVal}", contraseña: ${pLen} de ${PASS.length} caracteres).`));
     err.code = LOGIN_FAILED;
     err.keepBefore = true;
+    err.info = info;
     throw err;
   }
+  return info;
 }
 
 // Cierra la sesión si encuentra el enlace (solo se permite una sesión activa por usuario)
@@ -148,7 +153,7 @@ async function attempt(context, mod, stamp) {
         err.code = LOGIN_FAILED;
         throw err;
       }
-      await login(page, shotBefore);
+      await login(page, () => page.screenshot({ path: shotBefore.abs, type: 'jpeg', quality: 60, timeout: 15000 }));
     }
 
     const text = await page.locator('body').innerText({ timeout: 10000 }).catch(() => '');
@@ -195,6 +200,7 @@ function loadData() {
 
 function pruneScreenshots(data) {
   const keep = new Set();
+  (data.loginTest?.shots || []).forEach((sh) => keep.add(path.basename(sh.file)));
   data.runs.forEach((r) => r.modules.forEach((m) => [m.screenshot, m.screenshotBefore].forEach((f) => f && keep.add(path.basename(f)))));
   for (const f of fs.readdirSync(SHOTS_DIR)) {
     if (f.endsWith('.jpg') && !keep.has(f)) fs.rmSync(path.join(SHOTS_DIR, f));
@@ -239,11 +245,71 @@ async function sendAlert(run) {
   return sendMail(config.alertSubject, text, attachments);
 }
 
+// Prueba de login a petición: teclea usuario y contraseña, hace capturas y pulsa Iniciar sesión
+async function loginTest() {
+  const mod = config.modules[0];
+  const now = new Date();
+  const id = now.getTime();
+  const shots = [];
+  const result = { t: now.toISOString(), module: mod.name, url: mod.url, user: USER, ok: false, error: null, shots };
+  let page;
+  const shot = async (name, caption) => {
+    const file = `logintest_${id}_${name}.jpg`;
+    await page.screenshot({ path: path.join(SHOTS_DIR, file), type: 'jpeg', quality: 75, timeout: 15000 });
+    shots.push({ file: `screenshots/${file}`, caption });
+  };
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext({ viewport: { width: 1366, height: 850 }, locale: 'es-ES', timezoneId: 'Europe/Madrid' });
+    page = await context.newPage();
+    await page.goto(mod.url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
+    await settle(page);
+    if (!(await hasLoginForm(page))) {
+      await shot('inicio', 'Pantalla al abrir el módulo');
+      throw new Error('Al abrir el módulo no aparece la pantalla de login.');
+    }
+    result.info = await login(page, async (user, pass) => {
+      // Captura 1: cajas resaltadas y contraseña visible solo con su primer y último carácter
+      const n = PASS.length;
+      const masked = n <= 2 ? '•'.repeat(n) : PASS[0] + '•'.repeat(n - 2) + PASS[n - 1];
+      const mark = (el, on) => el.evaluate((node, on) => { node.style.outline = on ? '3px solid #e11d48' : ''; }, on);
+      await mark(user, true); await mark(pass, true);
+      await pass.evaluate((node, m) => { node.type = 'text'; node.value = m; }, masked);
+      await shot('datos', `Datos escritos: usuario completo; contraseña con ${n} caracteres (solo se muestran el primero y el último)`);
+      // Se vuelve a teclear la contraseña real y se hace la captura tal como se enviará
+      await pass.evaluate((node) => { node.type = 'password'; node.value = ''; });
+      await typeInto(pass, PASS);
+      await pass.press('Tab').catch(() => {});
+      await shot('antes', 'Justo antes de pulsar Iniciar sesión');
+      await mark(user, false); await mark(pass, false);
+    });
+    await shot('resultado', 'Después de pulsar Iniciar sesión: login correcto');
+    result.ok = true;
+    await logout(page);
+  } catch (e) {
+    result.error = String((e && e.message) || e).split('\n')[0].slice(0, 400);
+    if (e && e.info) result.info = e.info;
+    if (page) await shot('resultado', 'Después de pulsar Iniciar sesión').catch(() => {});
+  } finally {
+    await browser.close();
+  }
+  console.log(result.ok ? 'Prueba de login: correcta' : `Prueba de login: fallida. ${result.error}`);
+  const data = loadData();
+  data.loginTest = result;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data));
+  pruneScreenshots(data);
+}
+
 (async () => {
   if (process.env.TEST_EMAIL === 'true') {
     const err = await sendMail(`${config.alertSubject} (prueba)`,
       `Correo de prueba del monitor de GlobalEduca.\nSi lo recibes, las alertas de caída llegarán a esta dirección.\n\nPágina de estado: ${config.statusPageUrl}\n`);
     process.exit(err ? 1 : 0);
+  }
+  if (process.env.TEST_LOGIN === 'true') {
+    fs.mkdirSync(SHOTS_DIR, { recursive: true });
+    await loginTest();
+    return;
   }
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, '-');

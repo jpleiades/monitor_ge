@@ -33,6 +33,9 @@ a{color:inherit}
 .btn{font:inherit;font-size:15px;font-weight:500;border-radius:8px;padding:9px 16px;cursor:pointer;
   border:1px solid var(--ink);background:var(--ink);color:var(--surface)}
 .btn[disabled]{opacity:.55;cursor:progress}
+.top-actions{display:flex;gap:10px;flex-wrap:wrap}
+footer button + button{margin-left:14px}
+.err{color:var(--down)}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
 
 /* Estado actual: la franja de color es el elemento protagonista */
@@ -123,7 +126,10 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 <main>
   <header class="top">
     <div class="brand">GlobalEduca<span>Estado de la plataforma en el colegio demo02</span></div>
-    <button class="btn" id="verify">Verificar ahora</button>
+    <div class="top-actions">
+      <button class="btn ghost" id="verifylogin">Verificar login</button>
+      <button class="btn" id="verify">Verificar ahora</button>
+    </div>
   </header>
 
   <section class="now" id="now" data-state="none" aria-live="polite">
@@ -151,7 +157,8 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 
   <footer>
     La comprobación se hace automáticamente cada 20 minutos con GitHub Actions: entra con el usuario de prueba en cada módulo y guarda una captura si algo falla. Las ejecuciones programadas pueden llegar con unos minutos de retraso.
-    <button id="tokenlink">Configurar el botón Verificar ahora</button>
+    <button id="tokenlink">Configurar los botones de verificación</button>
+    <button id="lastlogin">Ver la última prueba de login</button>
   </footer>
 </main>
 
@@ -163,7 +170,7 @@ dialog::backdrop{background:rgba(15,22,30,.55)}
 </dialog>
 
 <dialog id="tokendlg">
-  <div class="dlg-head"><h3>Configurar Verificar ahora</h3><button class="btn ghost" data-close>Cerrar</button></div>
+  <div class="dlg-head"><h3>Configurar los botones de verificación</h3><button class="btn ghost" data-close>Cerrar</button></div>
   <div class="dlg-body">
     <p class="help">Para lanzar una comprobación desde esta página hace falta un token de GitHub con permiso sobre este repositorio. Se guarda solo en este navegador; no se sube a ningún sitio.</p>
     <p class="help">Créalo en <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">esta página de GitHub</a> (tu foto › Settings › Developer settings › Personal access tokens › Fine-grained tokens). Acceso solo al repositorio monitor_ge, con el permiso Actions en lectura y escritura y Contents en solo lectura.</p>
@@ -336,40 +343,74 @@ $('tokenlink').addEventListener('click', openTokenDialog);
 $('tokensave').addEventListener('click', () => { setToken($('tokeninput').value.trim()); $('tokendlg').close(); msg('Token guardado en este navegador.'); });
 $('tokenclear').addEventListener('click', () => { setToken(''); $('tokeninput').value = ''; });
 
-$('verify').addEventListener('click', async () => {
+// Lanza el workflow en GitHub y espera a que termine
+async function runWorkflow(btn, busyText, idleText, inputs, runningText, onDone){
   const tok = getToken();
   if (!tok) { openTokenDialog(); return; }
-  const btn = $('verify');
-  btn.disabled = true; btn.textContent = 'Verificando…';
+  document.querySelectorAll('.top .btn').forEach(b => b.disabled = true);
+  btn.textContent = busyText;
   const headers = { Authorization:`Bearer ${tok}`, Accept:'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28' };
   const since = Date.now() - 5000;
   try {
-    const r = await fetch(`${API}/actions/workflows/${CFG.workflow}/dispatches`, { method:'POST', headers, body: JSON.stringify({ ref: CFG.branch }) });
+    const body = { ref: CFG.branch }; if (inputs) body.inputs = inputs;
+    const r = await fetch(`${API}/actions/workflows/${CFG.workflow}/dispatches`, { method:'POST', headers, body: JSON.stringify(body) });
+    if (r.status === 422) throw new Error('GitHub no reconoce la opción de esta prueba. Actualiza el archivo .github/workflows/monitor.yml con la última versión.');
     if (r.status !== 204) throw new Error(r.status === 401 || r.status === 403 || r.status === 404
       ? 'GitHub ha rechazado el token. Revisa que tenga permiso Actions de lectura y escritura sobre monitor_ge.'
       : `GitHub respondió ${r.status} al lanzar la comprobación.`);
-    msg('Comprobación lanzada. Esperando a que GitHub la ponga en marcha…');
+    msg('Lanzado. Esperando a que GitHub lo ponga en marcha…');
     const deadline = Date.now() + 12 * 60000;
     while (Date.now() < deadline) {
       await new Promise(res => setTimeout(res, 8000));
       const rr = await fetch(`${API}/actions/workflows/${CFG.workflow}/runs?event=workflow_dispatch&per_page=1&t=${Date.now()}`, { headers, cache:'no-store' });
       const run = rr.ok ? (await rr.json()).workflow_runs?.[0] : null;
       if (!run || Date.parse(run.created_at) < since) continue;
-      if (run.status === 'queued' || run.status === 'waiting' || run.status === 'pending') { msg('Comprobación en cola en GitHub…'); continue; }
-      if (run.status !== 'completed') { msg('Comprobando los cinco módulos. Suele tardar entre uno y tres minutos…'); continue; }
+      if (run.status === 'queued' || run.status === 'waiting' || run.status === 'pending') { msg('En cola en GitHub…'); continue; }
+      if (run.status !== 'completed') { msg(runningText); continue; }
       if (run.conclusion !== 'success') throw new Error(`La ejecución terminó con error en GitHub (${run.conclusion}). Revisa el registro en Actions.`);
       DATA = await loadData(true); render();
-      const last = DATA.runs[DATA.runs.length - 1];
-      msg(`Comprobación terminada a las ${hm.format(Date.parse(last.t))}: ${STATE_TEXT[last.overall].toLowerCase()}.`);
+      onDone();
       return;
     }
-    throw new Error('La comprobación está tardando más de lo normal. Revisa su estado en GitHub Actions.');
+    throw new Error('Está tardando más de lo normal. Revisa su estado en GitHub Actions.');
   } catch (e) {
     msg(e.message);
   } finally {
-    btn.disabled = false; btn.textContent = 'Verificar ahora';
+    document.querySelectorAll('.top .btn').forEach(b => b.disabled = false);
+    btn.textContent = idleText;
   }
-});
+}
+
+$('verify').addEventListener('click', () => runWorkflow($('verify'), 'Verificando…', 'Verificar ahora', null,
+  'Comprobando los cinco módulos. Suele tardar entre uno y tres minutos…', () => {
+    const last = DATA.runs[DATA.runs.length - 1];
+    msg(`Comprobación terminada a las ${hm.format(Date.parse(last.t))}: ${STATE_TEXT[last.overall].toLowerCase()}.`);
+  }));
+
+$('verifylogin').addEventListener('click', () => runWorkflow($('verifylogin'), 'Probando login…', 'Verificar login',
+  { probar_login: 'true' }, 'Probando el login y haciendo capturas. Suele tardar uno o dos minutos…', () => {
+    msg(DATA.loginTest ? `Prueba de login terminada: ${DATA.loginTest.ok ? 'correcta' : 'fallida'}.` : 'Prueba de login terminada.');
+    openLoginTest();
+  }));
+
+function openLoginTest(){
+  const lt = DATA && DATA.loginTest;
+  if (!lt) { msg('Aún no hay ninguna prueba de login. Pulsa Verificar login.'); return; }
+  const i = lt.info || {};
+  const row = (k, v) => `<div class="mod"><span></span><span>${esc(k)}</span><span>${v}</span></div>`;
+  $('dtitle').textContent = `Prueba de login, ${dayHm.format(Date.parse(lt.t))}`;
+  $('dbody').innerHTML = `<div class="run">
+      <div class="run-title"><span class="dot ${lt.ok ? 'ok' : 'down'}"></span>${lt.ok ? 'Login correcto' : 'Login fallido'} <small>${esc(lt.module)}</small></div>
+      ${lt.error ? `<p class="err" style="margin:4px 0 10px">${esc(lt.error)}</p>` : ''}
+      ${row('Usuario', esc(lt.user))}
+      ${i.userTyped != null ? row('En la caja', i.userTyped === lt.user ? 'El usuario se escribió completo' : `<span class="err">Quedó escrito «${esc(i.userTyped)}»</span>`) : ''}
+      ${i.passTyped != null ? row('Contraseña', i.passTyped === i.passExpected ? `Se escribieron sus ${i.passExpected} caracteres` : `<span class="err">Se escribieron ${i.passTyped} de ${i.passExpected} caracteres</span>`) : ''}
+      ${i.submit ? row('Envío', esc(i.submit)) : ''}
+      ${lt.shots.map(sh => `<div class="mod"><span></span>${shotHTML(sh.file, sh.caption)}</div>`).join('')}
+    </div>`;
+  $('detail').showModal();
+}
+$('lastlogin').addEventListener('click', openLoginTest);
 
 async function refresh(){
   try { DATA = await loadData(false); render(); }
