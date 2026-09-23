@@ -2,8 +2,13 @@ name: Monitor GlobalEduca
 
 on:
   schedule:
-    - cron: '*/10 * * * *'   # cada 10 minutos (GitHub puede retrasarlo unos minutos)
+    - cron: '7,27,47 * * * *'   # cada 20 minutos, evitando las horas en punto (GitHub puede retrasarlo)
   workflow_dispatch:          # botón "Verificar ahora" y ejecución manual desde Actions
+    inputs:
+      probar_correo:
+        description: 'Solo enviar un correo de prueba (no comprueba la plataforma)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -45,13 +50,14 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           TRIGGER: ${{ github.event_name }}
+          TEST_EMAIL: ${{ inputs.probar_correo }}
         run: node monitor/check.js
 
       - name: Guardar resultados
         run: |
           git config user.name "monitor-globaleduca"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A docs/data docs/screenshots
+          git add -A docs
           git diff --cached --quiet && exit 0
           git commit -m "Estado $(TZ=Europe/Madrid date +'%d/%m %H:%M')"
           for i in 1 2 3; do
@@ -59,4 +65,3 @@ jobs:
             sleep 5
           done
           exit 1
-
