@@ -16,7 +16,10 @@
     {
       "id": "meta",
       "name": "Meta",
-      "url": "https://meta.globaleduca.com/demo02"
+      "url": "https://meta.globaleduca.com/demo02",
+      "okTexts": [
+        "No tiene permisos para acceder a la plataforma de Meta"
+      ]
     },
     {
       "id": "portal",

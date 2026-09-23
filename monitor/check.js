@@ -144,8 +144,19 @@ async function attempt(context, mod, stamp) {
   try {
     const resp = await page.goto(mod.url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
     result.http = resp ? resp.status() : null;
-    if (resp && resp.status() >= 400) throw new Error(`El servidor responde HTTP ${resp.status()}`);
     await settle(page);
+    // Pantallas que para este módulo son correctas aunque el servidor devuelva un código de error
+    const expected = async () => {
+      const t = (await page.locator('body').innerText({ timeout: 10000 }).catch(() => '')).toLowerCase();
+      return (mod.okTexts || []).find((x) => t.includes(x.toLowerCase()));
+    };
+    if (resp && resp.status() >= 400) {
+      const ok = await expected();
+      if (!ok) throw new Error(`El servidor responde HTTP ${resp.status()}`);
+      result.ok = true;
+      result.note = `Pantalla esperada: "${ok}"`;
+      return result;
+    }
 
     if (await hasLoginForm(page)) {
       if (loginBroken) {
@@ -156,6 +167,13 @@ async function attempt(context, mod, stamp) {
       await login(page, () => page.screenshot({ path: shotBefore.abs, type: 'jpeg', quality: 60, timeout: 15000 }));
     }
 
+    const okText = await expected();
+    if (okText) {
+      result.ok = true;
+      result.note = `Pantalla esperada: "${okText}"`;
+      result.loggedOut = await logout(page);
+      return result;
+    }
     const text = await page.locator('body').innerText({ timeout: 10000 }).catch(() => '');
     const lower = text.toLowerCase();
     const hit = config.errorTexts.find((t) => lower.includes(t.toLowerCase()));
