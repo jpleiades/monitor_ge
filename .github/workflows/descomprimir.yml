@@ -1,1 +1,30 @@
+name: Descomprimir zip
+
+on:
+  push:
+    paths: ['*.zip']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Descomprimir y borrar el zip
+        run: |
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then echo "No hay ningún zip"; exit 0; fi
+          for z in "${zips[@]}"; do
+            unzip -o "$z" -x '.github/*'
+            git rm -q "$z"
+          done
+          git config user.name "monito-ge"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Descomprimir ${zips[*]}"
+          git push
 
