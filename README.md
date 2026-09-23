@@ -1,6 +1,6 @@
 # Monitor GlobalEduca
 
-Página de estado de la plataforma GlobalEduca en el colegio de pruebas **demo02**. Cada 20 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
+Página de estado de la plataforma GE en el colegio de pruebas **demo02**. Cada 20 minutos GitHub Actions abre los cinco módulos con el usuario `dxxxxxxxxxxx`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a jxxxxx.gxxxxx@.....
 
 Página publicada: https://jpleiades.github.io/monitor_ge/
 
@@ -28,7 +28,7 @@ Comprueba que aparece la carpeta `.github`. Si no aparece, créala a mano: *Add 
 
 | Secreto       | Valor                                                        |
 |---------------|--------------------------------------------------------------|
-| `GE_PASSWORD` | Contraseña de demo02_monitor                                 |
+| `GE_PASSWORD` | Contraseña de xxxxxxxx                                |
 | `SMTP_HOST`   | Servidor de correo (ver paso 6)                              |
 | `SMTP_PORT`   | `587` (o `465`)                                              |
 | `SMTP_USER`   | Buzón que envía las alertas                                  |
