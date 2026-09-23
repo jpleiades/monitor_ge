@@ -1,16 +1,16 @@
 # Monitor GlobalEduca
 
-Página de estado de la plataforma GlobalEduca en el colegio de pruebas **demo02**. Cada 20 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
+Página de estado de la plataforma GlobalEduca en el colegio de pruebas **dxxxxx**. Cada 20 minutos GitHub Actions abre los cinco módulos con el usuario `dexxxxxxx`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a jxxxxxx@gmail.com.
 
 Página publicada: https://jpleiades.github.io/monitor_ge/
 
 | Módulo   | URL comprobada                          |
 |----------|-----------------------------------------|
-| PSP      | https://psp.globaleduca.com/demo02      |
-| Meta     | https://meta.globaleduca.com/demo02     |
-| Portal   | https://portal.globaleduca.com/demo02   |
-| Cuaderno | https://cuaderno.globaleduca.com/demo02 |
-| Admin    | https://admin.globaleduca.com/demo02    |
+| PSP      | https://psp.globaleduca.com/dxxxx      |
+| Meta     | https://meta.globaleduca.com/dxxxx    |
+| Portal   | https://portal.globaleduca.com/dxxxxx   |
+| Cuaderno | https://cuaderno.globaleduca.com/dxxxxx |
+| Admin    | https://admin.globaleduca.com/dxxxxx    |
 
 Colores: verde, todos los módulos funcionan; naranja, falla alguno; rojo, no responde ninguno; gris, no hubo comprobación en ese tramo.
 
