@@ -1,6 +1,6 @@
 # Monitor GlobalEduca
 
-Página de estado de la plataforma GlobalEduca en el colegio de pruebas **demo02**. Cada 10 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
+Página de estado de la plataforma GE en el colegio de pruebas **demo02**. Cada 10 minutos GitHub Actions abre los cinco módulos con el usuario `demo02_monitor`, guarda el resultado de las últimas 24 horas y, si algo falla, hace una captura de pantalla y envía un correo con asunto **CAIDA** a javier.garrido@globaleduca.com.
 
 Página publicada: https://jpleiades.github.io/monito_ge/
 
