@@ -147,8 +147,10 @@ async function attempt(context, mod, stamp) {
     await settle(page);
     // Pantallas que para este módulo son correctas aunque el servidor devuelva un código de error
     const expected = async () => {
-      const t = (await page.locator('body').innerText({ timeout: 10000 }).catch(() => '')).toLowerCase();
-      return (mod.okTexts || []).find((x) => t.includes(x.toLowerCase()));
+      // Sin distinguir mayúsculas y con los saltos de línea tratados como espacios
+      const norm = (x) => x.toLowerCase().replace(/\s+/g, ' ').trim();
+      const t = norm(await page.locator('body').innerText({ timeout: 10000 }).catch(() => ''));
+      return (mod.okTexts || []).find((x) => t.includes(norm(x)));
     };
     if (resp && resp.status() >= 400) {
       const ok = await expected();
